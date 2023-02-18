@@ -1,0 +1,105 @@
+--synax of the sqoop import----
+sqoop import \
+--connect jdbc:mysql://localhost/userdb \
+--username root \
+--table emp --m 1
+
+---to test the connection--  
+sqoop eval --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password <> --query "select count(*) from animal_daily_info" 
+ 
+
+--- to import table to hdfs---
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --query "select * from animal_daily_info where rownum=1 and \$CONDITIONS" --split-by ANIMAL_ID --target-dir /hills/test123
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --table TEMP_12 --split-by ANIMAL_ID --target-dir /hills/queryresult
+----where query----
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3#  --table TEMP_12 --split-by ANIMAL_ID --m 4 --where "WEIGHT='3.13'" --target-dir /hills/wherequery
+
+---- incremental---
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3#  --table TEMP_12 --split-by ANIMAL_ID --m 4  --incremental append --check-column ANIMAL_ID -last-value 6816 --target-dir /hills/queryresult
+---- LIST-TABLES--
+
+sqoop list-tables --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3#;
+
+--- test the connection---
+
+sqoop eval --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --query "select * from temp_11 where rownum=1";
+----- TO JOIN MORE THAN ONE TABLE--
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --query "SELECT SS_PW_B_ANIMAL.*, TEMP_12.* FROM SS_PW_B_ANIMAL JOIN TEMP_12 on (SS_PW_B_ANIMAL.ANIMAL_ID=TEMP_12.ANIMAL_ID_D)
+where \$CONDITIONS" --split-by SS_PW_B_ANIMAL.ANIMAL_ID --target-dir /hills/hivejoin1
+
+
+------- sqoop import as parquet file---
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --query "SELECT DISTINCT RECIPE_ID,RECIPE_CHANGE_NUMBER,STAGE_NUMBER,STAGE_ITEM_TYPE,MATERIAL,SUBSTANCE,SUB_CHANGE_NUM,FORMULA_TYPE,STREAM_POSITION FROM (SELECT DISTINCT STAGE.RECIPE_ID, STAGE.RECIPE_CHANGE_NUMBER, TO_CHAR(NVL(R.CREATED_ON,R.CREATED_DATE),'YYYY-MM-DD') CREATED_ON, FORMULA_TYPE, NVL(STAGE_NUMBER,'NA') STAGE_NUMBER, STAGE_DESCRIPTION, STREAM_POSITION, STREAM_POSITION_DESC, SUBSTANCE, MATERIAL, QUANTITY, UOM, STAGE.SUB_CHANGE_NUM, NVL(STAGE_ITEM_TYPE,'NA') stage_item_type, STAGE_ITEM_SOURCE, COMPONENT_TYPE, PCNTMASS_PER_STAGE, PCNTMASS_PER_POUTPUT, STAGE.MIGRATED_FROM_RECIPE_ID, STAGE.MIGRATED_FROM_CHG_NUM, a.MATERIAL_GROUP_ID, a.MATERIAL_GROUP_DESCRIPTION, MATERIAL_DECRIPTION, STAGE.IS_DELETED FROM SS_PD_RECIPE_INGREDIENT_STAGE STAGE, SS_PD_RECIPE R, SS_PD_SUBSTANCE_MATERIAL_GROUP a, SS_PD_MATERIAL_MASTER WHERE a.SUBSTANCE_ID                           =STAGE.SUBSTANCE AND a.SUBSTANCE_CHANGE_NUMBER                  =STAGE.SUB_CHANGE_NUM AND R.RECIPE_ID                                =STAGE. RECIPE_ID AND R.RECIPE_CHANGE_NUMBER                     =STAGE.RECIPE_CHANGE_NUMBER AND STAGE.MATERIAL                =MATERIAL_MASTER_ID and a.IS_DELETED=0 ) WHERE  \$CONDITIONS" --split-by recipe_id -m 1 --target-dir  /shiva_hdfs/recipe_ingredient_stage1 --as-parquetfile
+
+DataFrame parquet = sqlContext.read().parquet("/shiva_hdfs/recipe_ingredient_stage/*");
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --query "SELECT SS_PW_B_ANIMAL.*, TEMP_12.* FROM SS_PW_B_ANIMAL JOIN TEMP_12 on (SS_PW_B_ANIMAL.ANIMAL_ID=TEMP_12.ANIMAL_ID_D)
+where \$CONDITIONS" --split-by SS_PW_B_ANIMAL.ANIMAL_ID --target-dir /shiva_hdfs/diet_smpl_rslt
+
+---- TO CREATE AVROFILE---ERROR
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# -m 1 --table TEMP_12 --as-avrodatafile --target-dir /hills/IMPORT_AVROFILE;
+
+  to create sequence file--
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# -m 1 --table TEMP_12 --as-sequencefile --target-dir /hills/IMPORT_SEQFILE;
+
+---to create file for specific cloumns in table----
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# -m 1 --table TEMP_12 --columns 'ANIMAL_ID,DAY' --target-dir /hills/ImportCols;
+
+---- import fields terminated by(delimiter)---
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --table TEMP_12 --target-dir /hills/ImportFormat --fields-terminated-by '\t' -m 1;
+
+sqoop create-hive-table --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --table SS_PW_B_ANIMAL --fields-terminated-by ',';
+
+
+sqoop codegen  --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3# --table TEMP_12
+sqoop import-all-tables --options-file /home/mohankrishna/PRAC/SQOOP/ConnectionDetails.txt -m 1 --warehouse-dir=/user/hive/warehouse/sqoopdata.db;
+
+sqoop import --connect jdbc:oracle:thin:@10.200.10.102:1521/etldb --username staging_pip --password e102#n5hs3#  --table TEMP_12 --split-by ANIMAL_ID --m 4 --where "WEIGHT='1.4'" --target-dir /hills/wherequery1
+
+sqoop import \
+--connect jdbc:mysql://localhost/userdb \
+--username root \
+--table emp \
+--m 1 \
+--incremental append \
+--check-column id \
+-last value 1205
+
+--table emp_add \
+--m 1 \
+--where “city =’sec-bad’” \
+--target-dir /wherequery
+
+create and load hive table---
+
+recipe_id,recipe_change_number,stage_number,stage_item_type,material,substance,sub_change_num,formula_type,stream_position
+
+CREATE EXTERNAL TABLE `temp_recipe_ingredient_stage`(
+  `recipe_id` string,
+  `recipe_change_number` string,
+  `formula_type` string,
+  `stage_number` string,
+  `stream_position` string,
+  `substance` string,
+  `material` string,
+  `sub_change_num` string,
+  `stage_item_type` string
+  )
+ROW FORMAT SERDE
+  'org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe'
+STORED AS INPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat'
+OUTPUTFORMAT
+  'org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat'
+LOCATION
+  'hdfs://vm.datalake1.hillscte.com:8020/shiva_hdfs/hills/dataset'
+----load data into hive table----
+  load data inpath '/shiva_hdfs/recipe_ingredient_stage1/d5993ac0-bdd0-42bb-9721-06bbfdf29053.parquet' into table temp_recipe_ingredient_stage;
+
+
+				
